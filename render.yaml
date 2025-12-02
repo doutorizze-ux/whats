@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: whatsender-server
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 18.16.0
+      - key: WA_SERVER_MAX_RETRIES
+        value: 5
+      - key: WA_SERVER_RECONNECT_INTERVAL
+        value: 5000
