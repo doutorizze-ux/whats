@@ -12,12 +12,14 @@ const createTableIfNotExists = async (connection) => {
 }
 
 export const useMySQLAuthState = async (config, sessionId) => {
-    const connection = await mysql.createConnection(config)
+    const pool = mysql.createPool({ ...config, waitForConnections: true, connectionLimit: 10, queueLimit: 0 })
+    const connection = await pool.getConnection()
     await createTableIfNotExists(connection)
+    connection.release()
 
     const readData = async (type, id) => {
         const pk = `${sessionId}:${type}:${id}`
-        const [rows] = await connection.execute('SELECT data FROM wa_sessions WHERE pk = ?', [pk])
+        const [rows] = await pool.execute('SELECT data FROM wa_sessions WHERE pk = ?', [pk])
         if (rows.length === 0) return null
         const data = JSON.parse(rows[0].data, BufferJSON.reviver)
         return data
@@ -26,7 +28,7 @@ export const useMySQLAuthState = async (config, sessionId) => {
     const writeData = async (data, type, id) => {
         const pk = `${sessionId}:${type}:${id}`
         const json = JSON.stringify(data, BufferJSON.replacer)
-        await connection.execute(
+        await pool.execute(
             'INSERT INTO wa_sessions (pk, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?',
             [pk, json, json]
         )
@@ -34,7 +36,7 @@ export const useMySQLAuthState = async (config, sessionId) => {
 
     const removeData = async (type, id) => {
         const pk = `${sessionId}:${type}:${id}`
-        await connection.execute('DELETE FROM wa_sessions WHERE pk = ?', [pk])
+        await pool.execute('DELETE FROM wa_sessions WHERE pk = ?', [pk])
     }
 
     const creds = (await readData('creds', 'base')) || initAuthCreds()
