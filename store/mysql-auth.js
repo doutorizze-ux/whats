@@ -13,69 +13,110 @@ const createTableIfNotExists = async (connection) => {
 
 export const useMySQLAuthState = async (config, sessionId) => {
     const pool = mysql.createPool({ ...config, waitForConnections: true, connectionLimit: 50, queueLimit: 0 })
+
+    // Create table
     const connection = await pool.getConnection()
     await createTableIfNotExists(connection)
     connection.release()
 
-    const readData = async (type, id) => {
-        const pk = `${sessionId}:${type}:${id}`
-        const [rows] = await pool.execute('SELECT data FROM wa_sessions WHERE pk = ?', [pk])
-        if (rows.length === 0) return null
-        const data = JSON.parse(rows[0].data, BufferJSON.reviver)
-        return data
+    // Local memory cache
+    const memoryCache = new Map()
+
+    // Load all data for this session into memory at startup
+    const [rows] = await pool.execute('SELECT pk, data FROM wa_sessions WHERE pk LIKE ?', [`${sessionId}:%`])
+    rows.forEach(row => {
+        const key = row.pk.split(':').slice(1).join(':') // remove sessionId prefix
+        memoryCache.set(key, JSON.parse(row.data, BufferJSON.reviver))
+    })
+
+    // Buffer for pending writes
+    let writeBuffer = new Map()
+    let deleteBuffer = new Set()
+    let isSaving = false
+
+    const flushToDB = async () => {
+        if (isSaving || (writeBuffer.size === 0 && deleteBuffer.size === 0)) return
+        isSaving = true
+
+        try {
+            const connection = await pool.getConnection()
+            await connection.beginTransaction()
+
+            // Process deletes
+            if (deleteBuffer.size > 0) {
+                for (const key of deleteBuffer) {
+                    const pk = `${sessionId}:${key}`
+                    await connection.execute('DELETE FROM wa_sessions WHERE pk = ?', [pk])
+                }
+                deleteBuffer.clear()
+            }
+
+            // Process writes
+            if (writeBuffer.size > 0) {
+                for (const [key, data] of writeBuffer) {
+                    const pk = `${sessionId}:${key}`
+                    const json = JSON.stringify(data, BufferJSON.replacer)
+                    await connection.execute(
+                        'INSERT INTO wa_sessions (pk, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?',
+                        [pk, json, json]
+                    )
+                }
+                writeBuffer.clear()
+            }
+
+            await connection.commit()
+            connection.release()
+        } catch (err) {
+            console.error('Error saving session to DB:', err)
+        } finally {
+            isSaving = false
+        }
     }
 
-    const writeData = async (data, type, id) => {
-        const pk = `${sessionId}:${type}:${id}`
-        const json = JSON.stringify(data, BufferJSON.replacer)
-        await pool.execute(
-            'INSERT INTO wa_sessions (pk, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?',
-            [pk, json, json]
-        )
-    }
-
-    const removeData = async (type, id) => {
-        const pk = `${sessionId}:${type}:${id}`
-        await pool.execute('DELETE FROM wa_sessions WHERE pk = ?', [pk])
-    }
-
-    const creds = (await readData('creds', 'base')) || initAuthCreds()
+    // Flush periodically
+    setInterval(flushToDB, 5000)
 
     return {
         state: {
-            creds,
+            creds: memoryCache.get('creds:base') || initAuthCreds(),
             keys: {
-                get: async (type, ids) => {
+                get: (type, ids) => {
                     const data = {}
-                    await Promise.all(
-                        ids.map(async (id) => {
-                            let value = await readData(type, id)
-                            if (type === 'app-state-sync-key' && value) {
-                                value = proto.Message.AppStateSyncKeyData.fromObject(value)
-                            }
-                            data[id] = value
-                        })
-                    )
+                    ids.forEach(id => {
+                        const key = `${type}:${id}`
+                        let value = memoryCache.get(key)
+                        if (type === 'app-state-sync-key' && value) {
+                            value = proto.Message.AppStateSyncKeyData.fromObject(value)
+                        }
+                        data[id] = value
+                    })
                     return data
                 },
-                set: async (data) => {
-                    const tasks = []
+                set: (data) => {
                     for (const category in data) {
                         for (const id in data[category]) {
                             const value = data[category][id]
+                            const key = `${category}:${id}`
                             if (value) {
-                                tasks.push(writeData(value, category, id))
+                                memoryCache.set(key, value)
+                                writeBuffer.set(key, value)
+                                deleteBuffer.delete(key)
                             } else {
-                                tasks.push(removeData(category, id))
+                                memoryCache.delete(key)
+                                deleteBuffer.add(key)
+                                writeBuffer.delete(key)
                             }
                         }
                     }
-                    await Promise.all(tasks)
+                    // Trigger a flush but don't await it to avoid blocking
+                    flushToDB()
                 },
             },
         },
         saveCreds: () => {
-            return writeData(creds, 'creds', 'base')
+            const creds = memoryCache.get('creds:base')
+            writeBuffer.set('creds:base', creds)
+            return flushToDB()
         },
     }
 }
