@@ -111,6 +111,10 @@ const createSession = async (sessionId, res = null, options = { usePairingCode: 
         msgRetryCounterCache,
         generateHighQualityLinkPreview: true,
         getMessage,
+        browser: ['Whatsender', 'Chrome', '120.0.0.0'],
+        connectTimeoutMs: 60000,
+        keepAliveIntervalMs: 10000,
+        syncFullHistory: false,
     })
     store?.bind(wa.ev)
 

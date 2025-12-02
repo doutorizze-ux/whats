@@ -12,7 +12,7 @@ const createTableIfNotExists = async (connection) => {
 }
 
 export const useMySQLAuthState = async (config, sessionId) => {
-    const pool = mysql.createPool({ ...config, waitForConnections: true, connectionLimit: 10, queueLimit: 0 })
+    const pool = mysql.createPool({ ...config, waitForConnections: true, connectionLimit: 50, queueLimit: 0 })
     const connection = await pool.getConnection()
     await createTableIfNotExists(connection)
     connection.release()
