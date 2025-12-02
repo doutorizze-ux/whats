@@ -54,6 +54,7 @@ export const useMySQLAuthState = async (config, sessionId) => {
             // Process writes
             if (writeBuffer.size > 0) {
                 for (const [key, data] of writeBuffer) {
+                    if (data === undefined || data === null) continue
                     const pk = `${sessionId}:${key}`
                     const json = JSON.stringify(data, BufferJSON.replacer)
                     await connection.execute(
@@ -76,9 +77,15 @@ export const useMySQLAuthState = async (config, sessionId) => {
     // Flush periodically
     setInterval(flushToDB, 5000)
 
+    let creds = memoryCache.get('creds:base')
+    if (!creds) {
+        creds = initAuthCreds()
+        memoryCache.set('creds:base', creds)
+    }
+
     return {
         state: {
-            creds: memoryCache.get('creds:base') || initAuthCreds(),
+            creds,
             keys: {
                 get: (type, ids) => {
                     const data = {}
