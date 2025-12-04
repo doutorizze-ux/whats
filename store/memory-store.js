@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { jidNormalizedUser, toNumber, isLidUser } from 'baileys';
+import { jidNormalizedUser, toNumber, isLidUser } from '@whiskeysockets/baileys';
 import { EventEmitter } from 'events';
 
 class ConcurrentStore extends EventEmitter {
@@ -443,7 +443,7 @@ class ConcurrentStore extends EventEmitter {
                 try {
                     const jid = jidNormalizedUser(contact.id);
 
-                    if (!isLidUser(contact.lid)) continue;     
+                    if (!isLidUser(contact.lid)) continue;
 
                     this.contacts.set(jid, {
                         ...contact,
