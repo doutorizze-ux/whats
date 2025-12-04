@@ -115,7 +115,7 @@ class DeviceController extends Controller
 
         $id = $device->id;
         $typeAuth = $request->input('typeAuth', 'qr');
-        $phoneNumber = $request->input('phoneNumber', $device->phone);
+        $phoneNumber = preg_replace('/\D/', '', $request->input('phoneNumber', $device->phone));
 
         $response = Http::post(env('WA_SERVER_URL') . '/sessions/add', [
             'id' => 'device_' . $id,

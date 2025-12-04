@@ -11,9 +11,9 @@ import makeWASocketModule, {
     getAggregateVotesInPollMessage,
     fetchLatestBaileysVersion,
     WAMessageStatus,
-} from 'baileys'
+} from '@whiskeysockets/baileys'
 
-import proto from 'baileys'
+import proto from '@whiskeysockets/baileys'
 
 import makeInMemoryStore from './store/memory-store.js'
 

@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise'
-import { BufferJSON, initAuthCreds, proto } from 'baileys'
+import { BufferJSON, initAuthCreds, proto } from '@whiskeysockets/baileys'
 
 const createTableIfNotExists = async (connection) => {
     await connection.execute(`
