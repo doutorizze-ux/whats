@@ -111,7 +111,7 @@ const createSession = async (sessionId, res = null, options = { usePairingCode: 
         msgRetryCounterCache,
         generateHighQualityLinkPreview: true,
         getMessage,
-        browser: ['Mac OS', 'Chrome', '10.15.7'],
+        browser: ['Whatsender', 'Windows', '10.0.0'],
         retryRequestDelayMs: 2000,
         connectTimeoutMs: 60000,
         keepAliveIntervalMs: 10000,
