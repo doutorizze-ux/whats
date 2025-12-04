@@ -26,8 +26,8 @@ class DeviceController extends Controller
      */
     public function index()
     {
-        $devices=Device::where('user_id',Auth::id())->withCount('smstransaction')->latest()->paginate(20);
-        return view('wacore::user.device.index',compact('devices'));
+        $devices = Device::where('user_id', Auth::id())->withCount('smstransaction')->latest()->paginate(20);
+        return view('wacore::user.device.index', compact('devices'));
     }
 
     /**
@@ -38,21 +38,20 @@ class DeviceController extends Controller
      */
     public function deviceStatics()
     {
-       $data['total']=Device::where('user_id',Auth::id())->count();
-       $data['active']=Device::where('user_id',Auth::id())->where('status',1)->count();
-       $data['inActive']=Device::where('user_id',Auth::id())->where('status',0)->count();
-       $limit  = json_decode(Auth::user()->plan);
-       $limit = $limit->device_limit ?? 0;
+        $data['total'] = Device::where('user_id', Auth::id())->count();
+        $data['active'] = Device::where('user_id', Auth::id())->where('status', 1)->count();
+        $data['inActive'] = Device::where('user_id', Auth::id())->where('status', 0)->count();
+        $limit = json_decode(Auth::user()->plan);
+        $limit = $limit->device_limit ?? 0;
 
-       if ($limit == '-1') {
-           $data['total']= $data['total'];
-       }
-       else{
-         $data['total']= $data['total'].' / '. $limit;
-       }
-       
-       
-       return response()->json($data);
+        if ($limit == '-1') {
+            $data['total'] = $data['total'];
+        } else {
+            $data['total'] = $data['total'] . ' / ' . $limit;
+        }
+
+
+        return response()->json($data);
     }
 
     /**
@@ -65,7 +64,7 @@ class DeviceController extends Controller
         return view('wacore::user.device.create');
     }
 
-    
+
 
     /**
      * Store a newly created resource in storage.
@@ -75,11 +74,11 @@ class DeviceController extends Controller
      */
     public function store(Request $request)
     {
-       
+
         if (getUserPlanData('device_limit') == false) {
             return response()->json([
-                'message'=>__('Maximum Device Limit Exceeded')
-            ],401);  
+                'message' => __('Maximum Device Limit Exceeded')
+            ], 401);
         }
 
         $validated = $request->validate([
@@ -87,54 +86,60 @@ class DeviceController extends Controller
             'webhook_url' => 'nullable|url|max:100',
         ]);
 
-        $device=new Device;
-        $device->user_id=Auth::id();
-        $device->name=$request->name;
-        $device->hook_url=$request->webhook_url;
-        $device->phone=$request->phone;
+        $device = new Device;
+        $device->user_id = Auth::id();
+        $device->name = $request->name;
+        $device->hook_url = $request->webhook_url;
+        $device->phone = $request->phone;
         $device->save();
 
         return response()->json([
-            'redirect'=>url('user/device/'.$device->uuid.'/qr'),
-            'message'=>__('Device Created Successfully')
-        ],200);
+            'redirect' => url('user/device/' . $device->uuid . '/qr'),
+            'message' => __('Device Created Successfully')
+        ], 200);
     }
 
     public function scanQr($id)
     {
-        $device=Device::where('user_id',Auth::id())->where('uuid',$id)->first();
-        abort_if(empty($device),404);
+        $device = Device::where('user_id', Auth::id())->where('uuid', $id)->first();
+        abort_if(empty($device), 404);
 
-        return view('wacore::user.device.qr',compact('device'));
+        return view('wacore::user.device.qr', compact('device'));
 
     }
 
-    public function getQr($id)
+    public function getQr(Request $request, $id)
     {
-        $device=Device::where('user_id',Auth::id())->where('uuid',$id)->first();
-        abort_if(empty($device),404);
+        $device = Device::where('user_id', Auth::id())->where('uuid', $id)->first();
+        abort_if(empty($device), 404);
 
-        $id=$device->id;
-        $response=Http::post(env('WA_SERVER_URL').'/sessions/add',[
-                'id'       =>'device_'.$id,
-                'typeAuth' =>'qr',
-                'phoneNumber' =>$device->phone,
+        $id = $device->id;
+        $typeAuth = $request->input('typeAuth', 'qr');
+        $phoneNumber = $request->input('phoneNumber', $device->phone);
+
+        $response = Http::post(env('WA_SERVER_URL') . '/sessions/add', [
+            'id' => 'device_' . $id,
+            'typeAuth' => $typeAuth,
+            'phoneNumber' => $phoneNumber,
         ]);
-       
+
 
         if ($response->status() == 200) {
-             $body=json_decode($response->body());
-             if (isset($body->data->qrcode)) {
-                $data['qr']=$body->data->qrcode;
-                $data['message']=$body->message;
-                $device->qr=$body->data->qrcode;
+            $body = json_decode($response->body());
+
+            if (isset($body->data->qrcode)) {
+                $data['qr'] = $body->data->qrcode;
+                $data['message'] = $body->message;
+                $device->qr = $body->data->qrcode;
                 $device->save();
                 return response()->json($data);
-             }
-            
-        }
-        elseif($response->status() == 409){
-            $data['qr']      = $device->qr;
+            } elseif (isset($body->data->code)) {
+                $data['code'] = $body->data->code;
+                $data['message'] = $body->message;
+                return response()->json($data);
+            }
+        } elseif ($response->status() == 409) {
+            $data['qr'] = $device->qr;
             $data['message'] = __('QR code received, please scan the QR code');
             return response()->json($data);
         }
@@ -142,152 +147,150 @@ class DeviceController extends Controller
 
     public function checkSession($id)
     {
-       $device=Device::where('user_id',Auth::id())->where('uuid',$id)->first();
-       abort_if(empty($device),404);
+        $device = Device::where('user_id', Auth::id())->where('uuid', $id)->first();
+        abort_if(empty($device), 404);
 
-       $id=$device->id;
-       $response=Http::get(env('WA_SERVER_URL').'/sessions/status/device_'.$id);
-
-      
-       if ($response->status() == 200) {
-           $res=json_decode($response->body());
-           if (isset($res->data->status)) {
-             $device->status= $res->data->status == 'authenticated' ? 1 : 0; 
-           
-             $device->qr= $res->data->status == 'authenticated' ? null : $device->qr;
-
-             $message= $res->data->status == 'authenticated' ? __('Device Connected Successfully') : null;
-             $device->save();
-             return response()->json(['message'=>$message,'connected'=> $res->data->status == 'authenticated' ? true : false]);
-             
-           }
-            
-           
-
-       }         
-      
-
-      
-
-       return response()->json(['message'=> null,'connected'=> false]);
-
-    }
-
-    public function setStatus($device_id,$status)
-    {
-
-       $device_id=str_replace('device_','',$device_id);
-
-       $device=Device::where('id',$device_id)->first();
-       if (!empty($device)) {
-          $device->status=$status;
-          $device->save();
-       }
+        $id = $device->id;
+        $response = Http::get(env('WA_SERVER_URL') . '/sessions/status/device_' . $id);
 
 
-    }
+        if ($response->status() == 200) {
+            $res = json_decode($response->body());
+            if (isset($res->data->status)) {
+                $device->status = $res->data->status == 'authenticated' ? 1 : 0;
 
-    public function webHook(Request $request,$device_id)
-    {
-       
-       $session=$device_id;
-       $device_id=str_replace('device_','',$device_id);
+                $device->qr = $res->data->status == 'authenticated' ? null : $device->qr;
 
-       $device=Device::with('user')->whereHas('user')->where('id',$device_id)->first();
-       if (empty($device)) {
-        return response()->json([
-            'message'  => array('text' => 'this is reply'),
-            'receiver' => $request->from,
-            'session_id' => $session
-          ],403);
-       }
-       
-       if (getUserPlanData('chatbot',$device->user_id) == false) {
-            return response()->json([
-             'message'  => array('text' => 'this is reply'),
-             'receiver' => $request->from,
-             'session_id' => $session
-            ],401);  
-        }
+                $message = $res->data->status == 'authenticated' ? __('Device Connected Successfully') : null;
+                $device->save();
+                return response()->json(['message' => $message, 'connected' => $res->data->status == 'authenticated' ? true : false]);
 
-       $request_from=explode('@',$request->from);
-       $request_from=$request_from[0];
-
-       $message_id=$request->message_id ?? null;
-       $message=$request->message ?? null;
-       $device_id=$device_id;
-
-      
-       if (strlen($message) < 50 && $device != null && $message != null) {
-          $replies=Reply::where('device_id',$device_id)->with('template')->where('keyword','LIKE','%'.$message.'%')->latest()->get();
-
-          foreach ($replies as $key => $reply) {
-            if ($reply->match_type == 'equal') {
-
-                if ($reply->reply_type == 'text') {
-                 
-                 return response()->json([
-                    'message'  => array('text' => $reply->reply),
-                    'receiver' => $request->from,
-                    'session_id' => $session
-                  ],200);
-
-                 
-                }
-                else{
-                    if (!empty($reply->template)) {
-                        $template = $reply->template;
-
-                        if (isset($template->body['text'])) {
-                            $body = $template->body;
-                            $text=$this->formatText($template->body['text'],[],$device->user);
-                            $body['text'] = $text;
-                            
-                        }
-                        else{
-                            $body=$template->body;
-                        }
-
-                        return response()->json([
-                            'message'  => $body,
-                            'receiver' => $request->from,
-                            'session_id' => $session
-                        ],200);
-                    }
-                    
-                }
-
-                break;
-                
             }
 
-          }
 
 
-       }
-       
+        }
 
-       return response()->json([
-            'message'  => array('text' => 'this is reply'),
+
+
+
+        return response()->json(['message' => null, 'connected' => false]);
+
+    }
+
+    public function setStatus($device_id, $status)
+    {
+
+        $device_id = str_replace('device_', '', $device_id);
+
+        $device = Device::where('id', $device_id)->first();
+        if (!empty($device)) {
+            $device->status = $status;
+            $device->save();
+        }
+
+
+    }
+
+    public function webHook(Request $request, $device_id)
+    {
+
+        $session = $device_id;
+        $device_id = str_replace('device_', '', $device_id);
+
+        $device = Device::with('user')->whereHas('user')->where('id', $device_id)->first();
+        if (empty($device)) {
+            return response()->json([
+                'message' => array('text' => 'this is reply'),
+                'receiver' => $request->from,
+                'session_id' => $session
+            ], 403);
+        }
+
+        if (getUserPlanData('chatbot', $device->user_id) == false) {
+            return response()->json([
+                'message' => array('text' => 'this is reply'),
+                'receiver' => $request->from,
+                'session_id' => $session
+            ], 401);
+        }
+
+        $request_from = explode('@', $request->from);
+        $request_from = $request_from[0];
+
+        $message_id = $request->message_id ?? null;
+        $message = $request->message ?? null;
+        $device_id = $device_id;
+
+
+        if (strlen($message) < 50 && $device != null && $message != null) {
+            $replies = Reply::where('device_id', $device_id)->with('template')->where('keyword', 'LIKE', '%' . $message . '%')->latest()->get();
+
+            foreach ($replies as $key => $reply) {
+                if ($reply->match_type == 'equal') {
+
+                    if ($reply->reply_type == 'text') {
+
+                        return response()->json([
+                            'message' => array('text' => $reply->reply),
+                            'receiver' => $request->from,
+                            'session_id' => $session
+                        ], 200);
+
+
+                    } else {
+                        if (!empty($reply->template)) {
+                            $template = $reply->template;
+
+                            if (isset($template->body['text'])) {
+                                $body = $template->body;
+                                $text = $this->formatText($template->body['text'], [], $device->user);
+                                $body['text'] = $text;
+
+                            } else {
+                                $body = $template->body;
+                            }
+
+                            return response()->json([
+                                'message' => $body,
+                                'receiver' => $request->from,
+                                'session_id' => $session
+                            ], 200);
+                        }
+
+                    }
+
+                    break;
+
+                }
+
+            }
+
+
+        }
+
+
+        return response()->json([
+            'message' => array('text' => 'this is reply'),
             'receiver' => $request->from,
             'session_id' => $session
-          ],403);
-       
+        ], 403);
+
     }
 
     public function logoutSession($id)
     {
-       $device=Device::where('user_id',Auth::id())->where('uuid',$id)->first();
-       abort_if(empty($device),404);
+        $device = Device::where('user_id', Auth::id())->where('uuid', $id)->first();
+        abort_if(empty($device), 404);
 
-       $device->status=0;
-       $device->qr=null;
-       $device->save();
+        $device->status = 0;
+        $device->qr = null;
+        $device->save();
 
-       $id=$device->id;
-       $response=Http::delete(env('WA_SERVER_URL').'/sessions/delete/device_'.$id);
+        $id = $device->id;
+        $response = Http::delete(env('WA_SERVER_URL') . '/sessions/delete/device_' . $id);
 
-      return response()->json(['message'=>__('Congratulations! Your Device Successfully Logout')]);
+        return response()->json(['message' => __('Congratulations! Your Device Successfully Logout')]);
 
     }
 
@@ -299,19 +302,19 @@ class DeviceController extends Controller
      */
     public function show($id)
     {
-        $device=Device::where('user_id',Auth::id())->where('uuid',$id)->first();
-        abort_if(empty($device),404);
+        $device = Device::where('user_id', Auth::id())->where('uuid', $id)->first();
+        abort_if(empty($device), 404);
 
-        $posts=Smstransaction::where('user_id',Auth::id())->where('device_id',$device->id)->latest()->paginate();
-        $totalUsed=Smstransaction::where('user_id',Auth::id())->where('device_id',$device->id)->count();
-        $todaysMessage=Smstransaction::where('user_id',Auth::id())->where('device_id',$device->id)->whereDate('created_at',Carbon::today())->count();
-        $monthlyMessages=Smstransaction::where('user_id',Auth::id())
-                        ->where('device_id',$device->id)
-                        ->where('created_at', '>', now()->subDays(30)->endOfDay())
-                        ->count();
+        $posts = Smstransaction::where('user_id', Auth::id())->where('device_id', $device->id)->latest()->paginate();
+        $totalUsed = Smstransaction::where('user_id', Auth::id())->where('device_id', $device->id)->count();
+        $todaysMessage = Smstransaction::where('user_id', Auth::id())->where('device_id', $device->id)->whereDate('created_at', Carbon::today())->count();
+        $monthlyMessages = Smstransaction::where('user_id', Auth::id())
+            ->where('device_id', $device->id)
+            ->where('created_at', '>', now()->subDays(30)->endOfDay())
+            ->count();
 
 
-        return view('wacore::user.device.show',compact('device','posts','totalUsed','todaysMessage','monthlyMessages'));
+        return view('wacore::user.device.show', compact('device', 'posts', 'totalUsed', 'todaysMessage', 'monthlyMessages'));
     }
 
     /**
@@ -322,9 +325,9 @@ class DeviceController extends Controller
      */
     public function edit($id)
     {
-        $device=Device::where('user_id',Auth::id())->where('uuid',$id)->first();
-        abort_if(empty($device),404);
-        return view('wacore::user.device.edit',compact('device'));
+        $device = Device::where('user_id', Auth::id())->where('uuid', $id)->first();
+        abort_if(empty($device), 404);
+        return view('wacore::user.device.edit', compact('device'));
     }
 
     /**
@@ -341,17 +344,17 @@ class DeviceController extends Controller
             'webhook_url' => 'nullable|url|max:100',
         ]);
 
-        $device=Device::where('user_id',Auth::id())->where('uuid',$id)->first();
-        abort_if(empty($device),404);
+        $device = Device::where('user_id', Auth::id())->where('uuid', $id)->first();
+        abort_if(empty($device), 404);
 
-        $device->name=$request->name;
-        $device->hook_url=$request->webhook_url;
+        $device->name = $request->name;
+        $device->hook_url = $request->webhook_url;
         $device->save();
 
         return response()->json([
-            'redirect'=>url('/user/device'),
-            'message'=>__('Device Updated Successfully')
-        ],200);
+            'redirect' => url('/user/device'),
+            'message' => __('Device Updated Successfully')
+        ], 200);
     }
 
     /**
@@ -362,14 +365,14 @@ class DeviceController extends Controller
      */
     public function destroy($id)
     {
-        $device=Device::where('user_id',Auth::id())->where('uuid',$id)->first();
-        abort_if(empty($device),404);
+        $device = Device::where('user_id', Auth::id())->where('uuid', $id)->first();
+        abort_if(empty($device), 404);
         try {
-           if ($device->status == 1) {
-            Http::delete(env('WA_SERVER_URL').'/sessions/delete/device_'.$device->id);
-         }
+            if ($device->status == 1) {
+                Http::delete(env('WA_SERVER_URL') . '/sessions/delete/device_' . $device->id);
+            }
         } catch (Exception $e) {
-            
+
         }
         $device->delete();
 
@@ -377,6 +380,6 @@ class DeviceController extends Controller
             'message' => __('Congratulations! Your Device Successfully Removed'),
             'redirect' => route('user.device.index')
         ]);
-       
+
     }
 }

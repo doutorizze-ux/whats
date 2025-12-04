@@ -35,6 +35,20 @@
 						<p><strong>{{ __('QR Loading.....') }}</strong></p>
 					</div>
 				</div>
+                <div class="text-center mt-3">
+                    <button class="btn btn-sm btn-primary" id="use-pairing-code">{{ __('Link with Phone Number') }}</button>
+                    <button class="btn btn-sm btn-primary d-none" id="use-qr-code">{{ __('Link with QR Code') }}</button>
+                </div>
+                <div class="pairing-code-area d-none mt-3 text-center">
+                    <div class="form-group">
+                        <label for="phone-number">{{ __('Enter Phone Number (with country code)') }}</label>
+                        <input type="text" class="form-control" id="phone-number" placeholder="e.g. 5511999999999" value="{{ $device->phone ?? '' }}">
+                    </div>
+                    <button class="btn btn-success" id="get-pairing-code">{{ __('Get Pairing Code') }}</button>
+                    <div class="mt-3">
+                        <h3 id="pairing-code-display" class="font-weight-bold text-primary"></h3>
+                    </div>
+                </div>
 			</div>
 			<div class="card-footer">
 				<div class="alert bg-gradient-red server_disconnect none text-white" role="alert">
